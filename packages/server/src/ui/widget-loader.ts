@@ -1,25 +1,24 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Resolve repository root (assumes this file is in packages/server/src/ui)
-const repoRoot = path.resolve(__dirname, '../../../../');
-const uiDistDir = path.join(repoRoot, 'packages/ui/dist');
+const uiDistDir = fileURLToPath(new URL('../../../ui/dist/', import.meta.url));
 
 export function loadVoteWidgetHtml(): string {
   try {
-    const indexPath = path.join(uiDistDir, 'index.html');
-    if (!fs.existsSync(indexPath)) {
+    const indexPath = join(uiDistDir, 'index.html');
+    if (!existsSync(indexPath)) {
       return placeholderHtml('[UI build missing: run `npm run build:ui`]');
     }
-    let html = fs.readFileSync(indexPath, 'utf8');
+    let html = readFileSync(indexPath, 'utf8');
 
     // Inline stylesheets
     html = html.replace(
       /<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g,
       (_, href) => {
-        const cssPath = path.join(uiDistDir, href.replace(/^\//, ''));
-        if (fs.existsSync(cssPath)) {
-          const css = fs.readFileSync(cssPath, 'utf8');
+        const cssPath = join(uiDistDir, href.replace(/^\//, ''));
+        if (existsSync(cssPath)) {
+          const css = readFileSync(cssPath, 'utf8');
           return `<style data-inlined="true">${css}</style>`;
         }
         return `<!-- missing stylesheet ${href} -->`;
@@ -30,9 +29,9 @@ export function loadVoteWidgetHtml(): string {
     html = html.replace(
       /<script[^>]*type="module"[^>]*src="([^"]+)"[^>]*><\/script>/g,
       (_, src) => {
-        const jsPath = path.join(uiDistDir, src.replace(/^\//, ''));
-        if (fs.existsSync(jsPath)) {
-          const js = fs.readFileSync(jsPath, 'utf8');
+        const jsPath = join(uiDistDir, src.replace(/^\//, ''));
+        if (existsSync(jsPath)) {
+          const js = readFileSync(jsPath, 'utf8');
           return `<script type="module" data-inlined="true">${js}</script>`;
         }
         return `<!-- missing script ${src} -->`;

@@ -6,8 +6,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "ts-node src/index.ts"
+    "build": "tsc -b ../shared tsconfig.json",
+    "predev": "npm run build -w @parlwatch/shared",
+    "dev": "node --loader ts-node/esm src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.19.1",
@@ -16,4 +17,3 @@
     "@parlwatch/shared": "0.0.1"
   }
 }
-
