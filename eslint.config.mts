@@ -4,11 +4,17 @@ import tseslint from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
 
 export default defineConfig([
+  // Base TS/JS recommended
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  // Node environment for backend/shared packages
   {
-    files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
-    plugins: { js },
-    extends: ['js/recommended'],
-    languageOptions: { globals: globals.browser }
+    files: ['packages/server/**/*.{ts,js,mjs,cjs}', 'packages/shared/**/*.{ts,js}'],
+    languageOptions: { globals: { ...globals.node } }
   },
-  tseslint.configs.recommended
+  // Browser (React) environment for UI
+  {
+    files: ['packages/ui/**/*.{ts,tsx,js,jsx}'],
+    languageOptions: { globals: { ...globals.browser } }
+  }
 ]);
