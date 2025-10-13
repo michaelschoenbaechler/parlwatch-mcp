@@ -1,26 +1,105 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-All TypeScript sources live inside `src/`. `index.ts` wires up the MCP server and registers tools—keep it limited to bootstrap logic. Shared utilities include `http.ts` (SwissParl fetch helpers), `formatters.ts` (string shaping via `formatVote`), and `types.ts` (query helpers). Each tool lives in `src/tools/<name>.ts`; today only `get-votes.ts` is registered, so mirror its layout when adding more. Built output belongs in `dist/`; leave generated files untouched.
+## Monorepo Structure
+All source code is organized into workspace packages under `packages/`:
 
-## Build, Test, and Development Commands
-- `npm install` installs dependencies.
-- `npm run dev` runs the MCP server with ts-node for rapid iteration.
-- `npm run build` transpiles sources into `dist/`.
-- `npm start` executes the built bundle.
-- `npm run type-check` runs `tsc --noEmit` to catch typing issues.
-- `npm run lint` / `npm run lint:fix` apply ESLint rules.
-- `npm run prettier:fix` runs Prettier across `src/`.
-- `npm run clean` clears `dist/` prior to rebuilding.
+```
+packages/
+  shared/  -> Pure TypeScript types & utilities (no external side-effects)
+  server/  -> MCP server (Node, ESM) exposing tools & resources
+  ui/      -> React widgets (Vite build, inlined into MCP resources)
+```
 
-## Coding Style & Naming Conventions
-Use modern ESM (`type: module`) and stay within the existing TypeScript style. ESLint (`js/recommended` + `typescript-eslint`) and Prettier dictate formatting—resolve findings rather than suppressing them. Stick to two-space indentation, trailing semicolons, and single quotes. File names stay lowercase with optional dashes. Export types/interfaces in `PascalCase`; functions, constants, and tool ids in `camelCase`. Keep tool handlers focused: perform validation with `zod`, delegate data access to `makeVotesRequest`, and reuse formatters.
+Legacy root `src/` directory was removed during the monorepo migration.
 
-## Testing Guidelines
-A formal test runner is not yet configured. When introducing behavior, add unit specs under `src/__tests__/` (e.g., `src/__tests__/formatters.test.ts`) and wire them into `npm test`. Mock SwissParl calls by stubbing `fetchSwissParlEntity`. Always run `npm run type-check`, `npm run lint`, and a dry-run of any new tests before opening a PR.
+## Package Responsibilities
+- **@parlwatch/shared**: Reusable type definitions (`Config`, `QueryOptions`, etc.). Should remain lightweight and fast to build. Use `composite: true` for TS project references.
+- **@parlwatch/server**: Registers MCP tools/resources. Avoid UI-specific logic here—only load inlined HTML via the widget loader.
+- **@parlwatch/ui**: Standalone React widgets. Keep them framework‑agnostic (no direct MCP SDK imports) so they can be embedded elsewhere later.
 
-## Commit & Pull Request Guidelines
-History follows Conventional Commit prefixes (e.g., `chore: basic setup`). Continue with `feat|fix|chore|docs|refactor: concise summary` lines under 72 characters. Pull requests should outline context, a bullet list of changes, and verification steps (including relevant commands or sample MCP output). Reference issue numbers when available and attach logs or screenshots when behavior changes. Prefer squash merges or rebases to keep the main branch linear.
+## Build & Development
+Root scripts orchestrate builds:
+- `npm run dev` – Concurrent UI dev server + server (ts-node).
+- `npm run build` – `ui` → `shared` → `server` (ensures widgets are available for inlining).
+- `npm start` – Runs compiled server (`packages/server/dist`).
+- `npm run type-check` – TS project references + UI no‑emit check.
+- `npm run lint` / `lint:fix` – ESLint across all packages.
 
-## SwissParl & Agent Notes
-The SwissParl client automatically paginates; pass `skip` and `top` through tool parameters instead of manual slicing. New MCP tools should export `register<Name>Tool` and register inside `index.ts`. Reuse `makeVotesRequest` for consistent filtering and ordering, and extend `formatters.ts` for any new text responses.
+Widget inlining: The server loads `packages/ui/dist/index.html`, inlines referenced CSS/JS into a single HTML payload, and exposes it via the `vote-widget` resource (`ui://widget/vote-card.html`). If the UI build is missing, a placeholder HTML document is returned.
+
+## Coding Standards
+- Use ESM (`type: module`) everywhere.
+- Use `new URL(import.meta.url)` for filesystem path derivation (no CommonJS globals).
+- Keep `shared` free of runtime dependencies that could bloat consumers.
+- Prefer explicit types—avoid `any`; export domain types in `@parlwatch/shared` if used across packages.
+- Tool registrations live in `packages/server/src/tools/*` with the pattern `register<Name>Tool`.
+- UI components live under `packages/ui/src/components` and should accept data via props (e.g., `initialState`).
+
+## Adding a New MCP Tool
+1. Implement domain logic or data access (reuse fetch helpers in `server/src/http.ts`).
+2. Create `packages/server/src/tools/<tool-name>.ts` exporting `register<Name>Tool`.
+3. Register resource (HTML template) if UI output is required.
+4. Reference the HTML resource via `_meta.openai/outputTemplate` for models supporting UI rendering.
+5. Add structured content (JSON) to pair with UI where helpful.
+
+## Adding a New Widget
+1. Add component under `ui/src/components`.
+2. Wire it in `ui/src/main.tsx` (or create a separate entry + HTML if multiple widgets will be built independently).
+3. Build UI: `npm run build:ui`.
+4. Add a new resource loader (can reuse existing inline strategy) and register in a new tool.
+
+## Testing Strategy (Planned)
+Testing is not yet configured. Recommended roadmap:
+- Introduce **Vitest** in `ui` for component tests.
+- Introduce **Jest or Vitest** in `server` for tool handler units (mock SwissParl network calls).
+- Add a lightweight contract test ensuring widget inlining returns a single HTML document (no external `<script src>` or `<link href>` tags).
+
+## Commit & PR Guidelines
+Follow Conventional Commits (e.g., `feat(server): add debate tool`, `fix(ui): correct date formatting`). Keep scope to package or concern. Provide:
+- Summary
+- Motivation / context
+- Verification steps (commands + expected output)
+
+Squash or rebase to maintain a linear history.
+
+## Performance & Scaling Guidance
+- Keep `shared` fast: avoid transitive deps that would slow every build.
+- Consider code-splitting UI widgets if bundle size grows; then add an HTML build per widget.
+- Add caching (e.g., simple in-memory) in server data fetch layer if rate or latency becomes a concern.
+- Introduce CI with separate jobs: (1) type-check, (2) lint, (3) build, (4) future test matrix.
+
+## Security & Stability
+- Avoid embedding secrets in code; prefer environment variables (support forthcoming if needed).
+- Validate all tool inputs with `zod` schemas (already in use).
+- Fail gracefully: return textual fallback content plus diagnostic `_meta` when data calls fail.
+
+## Release & Versioning (Future)
+For publishing (if desired):
+- Adopt `changesets` for independent version bumps.
+- Automate changelog generation & GitHub releases.
+- Tag releases matching MCP server versions (e.g., `server-v0.2.0`).
+
+## SwissParl Data Usage Notes
+- Use `top` and `skip` for pagination; avoid fetching large unbounded sets.
+- Always specify ordering (`VoteEnd desc`) for deterministic results.
+- Add search filters via `substringOf` only when needed to reduce payload size.
+
+## Quick Reference Commands
+```bash
+npm run dev              # Dev mode (ui + server)
+npm run build            # Full build
+npm run build:ui         # Build widgets only
+npm run type-check       # TS project refs + UI
+npm run lint             # Lint all packages
+npm run clean            # Remove all build outputs
+```
+
+## Open TODOs
+- [ ] Add tests (Vitest/Jest) per package
+- [ ] Provide Storybook or alternative component explorer
+- [ ] Implement CI pipeline
+- [ ] Add additional MCP tools (e.g., list committees, members)
+- [ ] Introduce caching / rate limiting layer
+
+---
+Questions or proposals: open an issue or draft a PR describing intent + impact.
