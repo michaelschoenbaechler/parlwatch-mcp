@@ -1,7 +1,10 @@
-import js from '@eslint/js';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const js = require('@eslint/js') as typeof import('@eslint/js');
+const globals = require('globals') as typeof import('globals');
+const tseslint = require('typescript-eslint') as typeof import('typescript-eslint');
 
 export default defineConfig([
   // Base TS/JS recommended
